@@ -1,0 +1,305 @@
+---
+title: "Kyrgyzstan Election Data Visualisation"
+author: "Adilet Bekturov"
+date: "2022-11-13"
+categories: [news, code, analysis]
+image: "vote_2017.jpg"
+---
+
+# **How-to: Make your first interactive map in R**
+
+Interactive maps are such an empowering form of cartography, and have such wide-ranging application that knowing how to create one is an important skill for any cartographer to have.
+
+While there are some great solutions out there for creating interactive maps without needing any coding skills at all, I think it's great to be able to know how to code your own interactive map. It gives you that bit more flexibility in terms of how you display your data, but also in terms of sharing your map without license restrictions
+
+There are lots of options for doing this, and for this tutorial we're going to use R. Coding up a map in R is surprisingly straightforward, and at its most simple it only really needs a few lines of code. I think lots of people shy away from coding web maps as it looks really complicated, but once you understand the different building blocks you need it starts to make a lot more sense. And the
+thing about coding is you only need to start from scratch once, then you can re-use and adapt your code as often as you need!
+
+When I'm writing out coding tutorials, I try to share code examples a mixture of images and text snippets to encourage you to write out the code rather than just copy+paste - I feel like it's the best way to learn what you're doing.
+
+## **Background**
+
+The elections were originally scheduled for the third Sunday in November (19 November 2017), but since Atambayev's term was set to expire on 1 December, opposition lawmakers in the Supreme Council demanded that the date be brought forward, so that there would be room for a second round of voting and the inauguration ceremony before 1 December, as to prevent a conflict of law.
+Atambayev announced on 29 May 2017 that the elections would be held on 15 October.
+
+In December 2016, a referendum was held on strengthening the power of the Prime Minister and was approved by 80% of voters.
+
+In early August 2017, the leaders of three opposition parties -- Onuguu--Progress, United Kyrgyzstan, and Respublika--Ata Zhurt -- announced the creation of a coalition called Kaira Zharaluu (Revival), which was to field a single candidate -- Bakyt Torobayev. This agreement fell through, with each leader registering separately
+to participate in the election. Going into the election, Temir Sariyev, Ömürbek Babanov, and Sooronbay Jeenbekov, all former prime ministers, were considered to be the leading candidates.
+
+In September 2017, after Kazakh president Nursultan Nazarbayev met Kyrgyz opposition leader Ömürbek Babanov, the Kyrgyz Ministry of Foreign Affairs accused Kazakhstan of interfering in the Kyrgyz election.
+
+A total of 59 people initially declared their intention to run for the presidency; 48 self-nominees and 11 nominated by political parties. The Central Election Commission announced on 16 August 2017 that the number of applicants had dropped to 50. One high-profile potential candidate, opposition leader Omurbek Tekebaev, was convicted on corruption and fraud charges on 16 August 2017,and
+as such could not run for president. On the next day the Central Election Commission invalidated the list of signatures presented by Tekebaev because he violated financing rules.
+
+Jeenbekov resigned as Prime Minister on 21 August 2017, after being named as an official candidate. He stated that he "\[wanted\] to be in an equal position with other presidential candidates". The incumbent, Atambayev, has been criticised by opponents for using his position to promote the candidacy of Jeenbekov, a longtime ally.
+
+On 26 August, the CEC reported that 24 people had submitted the required number of signatures. Meanwhile, 15 people had failed to provide any signatures and five people had failed the required Kyrgyz language test in addition to not providing signatures. Of the eleven candidates nominated by political parties, six of them---Turat Akimov (Chon Kazat), Kanatbek Isaev (Kyrgyzstan Party), Akhmatbek Keldibekov (Respublika--Ata Zhurt), Iskhak Masaliev (Party of
+Communists of Kyrgyzstam), and Tursunbek Akun (Human Rights Party)---were all rejected by the CEC for not collecting enough valid signatures from voters.
+
+By 10 September -- the end of the registration period -- the CEC had rejected a total of 37 people and nine had withdrawn. The remaining 13 were officiallyregistered as participants in the election. Finally, 13 people were registered to participate in the elections and listed on the ballot papers. However, a number of candidates subsequently ithdrew; Kamchybek Tashiev decided to withdraw in favour of Sooronbay Jeenbekov on 25 September. On 17 September, Bakyt Torobayev formed an alliance with Ömürbek Babanov and agreed that should
+Babanov win, he would become prime minister. Yet on 6 October, Torobayev announced his withdrawal from the race. On 13 October, Azimbek Beknazarov bowed out of the race. All three of the above remained on the ballot because they withdrew after the ballot papers had been finalised and printed.
+
+## **Let's start**
+
+Normally I would bang on and on about how you should always map in a projected coordinate system to avoid distortions and errors. I stand by that for most static maps, however we're creating an interactive map which has scope for the user to pan and zoom around the entire world. This means we need to convert our data into the geographic coordinate system WGS84. We also want to convert it into a *geojson* format. While R can read most common GIS data formats, I find *geojson* is the most straightforward to work with and therefore most suitable for beginners.
+
+Handily, in QGIS we can achieve both of these things in just one process. In your Layers panel right click on your layer and choose Save features as\... Change the file format to Geojson and name your layer something snappy - I'm calling mine *kg_rayon.geojson*.  At this point make sure you change the coordinate system to *WGS 84 (ESPG:4326)*.
+
+{r}
+
+```{r}
+library("tmap")
+library("leaflet")
+library("magrittr")
+library("rio")
+library("plyr")
+library("scales")
+library("htmlwidgets")
+library("ggplot2")
+library("rgdal")
+library("tmaptools")
+```
+
+Open the *shp* file
+
+```{r}
+mngeo <- readOGR("C:/Users/admin/Desktop/Election/kg_rayon.geojson")
+```
+
+Create a vector holding your colour bins
+
+```{r}
+mngeobins <- c(0, 50000, 100000, 150000, 200000, 250000, 300000, 350000, 450000)
+mngeopal <- colorBin("YlGnBu", domain = kgz$voters, bins = kgzbins)
+```
+
+Give up name
+
+```{r}
+mnpopup <- paste0("<b>","Rayon: ","<b>", mngeo@data$NAME, "<br>",
+                  "<b>","Code: ","<b>", mngeo@data$NAME_A2, "<br>",
+                  "<b>","Total voters: ","<b>", mngeo@data$voters, "<br>",
+                  "<b>","Zarlykov: ","</b>", mngeo@data$Zarlykov_E, "<br>",
+                  "<b>","Umetalieva: ","</b>", mngeo@data$Umetalieva, "<br>",
+                  "<b>","Sariev: ","</b>", mngeo@data$Sariev_Tem, "<br>",
+                  "<b>","Kochkorov: ","</b>", mngeo@data$Kochkorov_, "<br>",
+                  "<b>","Masadykov: ", "</b>", mngeo@data$Masadykov_, "<br>",
+                  "<b>","Babanov: ", "</b>", mngeo@data$Babanov_Om, "<br>",
+                  "<b>","Abdyldaev: ", "</b>", mngeo@data$Abdyldaev_, "<br>",
+                  "<b>","Beknazarov: ","</b>", mngeo@data$Beknazarov, "<br>",
+                  "<b>","Zheenbekov: ", "</b>", mngeo@data$Zheenbekov, "<br>",
+                  "<b>","Madumarov: ","</b>", mngeo@data$Madumarov_, "<br>",
+                  "<b>","Maliev: ","</b>", mngeo@data$Maliev_Ars, "<br>",
+                  "<b>","Against to all: ","</b>", mngeo@data$Against_ev)
+
+```
+
+\## Show the map
+
+```{r}
+leaflet(mngeo) %>%
+  addProviderTiles("OpenStreetMap") %>%
+  addPolygons(stroke=TRUE, 
+              smoothFactor = 0.2,
+              weight = 1,
+              fillOpacity = .6, 
+              popup=mnpopup,
+              color= ~mngeopal(mngeo@data$voters)
+  )%>% addLegend("bottomright", pal = mngeopal, values = ~mngeo@data$voters, title = "Results",
+                 labFormat = labelFormat(suffix = ' voters', between = '-',
+                                         transform = function(x) 1 * x))
+
+```
+
+#section for multi-layered
+
+```{r}
+minPct <- min(c(mngeo@data$voters, mngeo@data$ballot_pap, mngeo@data$Zarlykov_E, mngeo@data$Umetalieva, mngeo@data$Sariev_Tem, mngeo@data$Kochkorov_, mngeo@data$Masadykov_, mngeo@data$Babanov_Om, mngeo@data$Abdyldaev_, mngeo@data$Beknazarov, mngeo@data$Zheenbekov, mngeo@data$Madumarov_, mngeo@data$Maliev_Ars, mngeo@data$Against_ev))
+maxPct <- max(c(mngeo@data$voters, mngeo@data$ballot_pap, mngeo@data$Zarlykov_E, mngeo@data$Umetalieva, mngeo@data$Sariev_Tem, mngeo@data$Kochkorov_, mngeo@data$Masadykov_, mngeo@data$Babanov_Om, mngeo@data$Abdyldaev_, mngeo@data$Beknazarov, mngeo@data$Zheenbekov, mngeo@data$Madumarov_, mngeo@data$Maliev_Ars, mngeo@data$Against_ev))
+paletteLayers <- colorBin(palette = "RdBu", domain = c(minPct, maxPct), bins = c(500000, 200000, 100000, 50000, 40000, 30000, 20000, 10000, 5000, 1000, 500, 0) , pretty=FALSE)
+incumbPalette <- colorFactor(palette = c("red", "grey", "blue"), domain = mngeo@data$voters)
+
+```
+
+\## Show the map
+
+```{r}
+leaflet(mngeo) %>%
+  addProviderTiles("OpenStreetMap") %>%
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2,
+              fillOpacity = .75,
+              popup=mnpopup, 
+              color= ~mngeopal(mngeo@data$voters),
+              group="Number of voters"
+  ) %>%
+  addLegend(position="bottomleft", colors=c('red', 'grey', 'blue'), labels=c("Low", "Medium", "High"))
+
+```
+
+\## Create a online map
+
+```{r}
+mnResultmap <- leaflet(mngeo) %>% 
+  addProviderTiles("OpenStreetMap") %>%
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2,
+              fillOpacity = .75,
+              popup=mnpopup, 
+              color= ~mngeopal(mngeo@data$voters),
+              group="Number of voters"
+  ) %>% 
+  addLegend(position="bottomleft", colors=c('red', 'grey', 'blue'), labels=c("Low", "Medium", "High"))  %>%
+  
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~mngeopal(mngeo@data$ballot_pap),
+              group="Number of ballot papers"
+  ) %>% addLegend("bottomright", pal = paletteLayers, values = ~mngeo@data$ballot_pap, title = "Results",
+                  labFormat = labelFormat(suffix = ' voter', between = '-',
+                                          transform = function(x) 1 * x)) %>%
+  
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Zarlykov_E),
+              group="Zarlykov E.Z."
+  ) %>%
+  
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Umetalieva),
+              group="Umetalieva T.Zh."
+  ) %>%
+  
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Sariev_Tem),
+              group="Sariev T.A."
+  ) %>%  
+
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Kochkorov_),
+              group="Kochkorov U.T."
+  ) %>%  
+    
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Masadykov_),
+              group="Masadykov T.Sh."
+  ) %>%
+
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Babanov_Om),
+              group="Babanov O.T."
+  ) %>%
+  
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Abdyldaev_),
+              group="Abdyldaev A.B."
+  ) %>%
+ 
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Beknazarov),
+              group="Beknazarov A.A."
+  ) %>%
+  
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Zheenbekov),
+              group="Zheenbekov S. Sh."
+  ) %>%
+  
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Madumarov_),
+              group="Madumarov A.K."
+  ) %>%
+ 
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Maliev_Ars),
+              group="Maliev A.K."
+  ) %>%
+
+  addPolygons(stroke=TRUE,
+              weight=1,
+              smoothFactor = 0.2, 
+              fillOpacity = .75, 
+              popup=mnpopup, 
+              color= ~paletteLayers(mngeo@data$Against_ev),
+              group="Against to all"
+  ) %>%
+  
+  addLayersControl(
+    baseGroups=c("Number of voters", "Number of ballot papers", "Zarlykov E.Z.", "Umetalieva T.Zh.", "Sariev T.A.", "Kochkorov U.T.", "Masadykov T.Sh.", "Babanov O.T.", "Abdyldaev A.B.", "Beknazarov A.A.", "Zheenbekov S. Sh.", "Madumarov A.K.", "Maliev A.K.", "Against to all"),
+    position = "bottomleft",
+    options = layersControlOptions(collapsed = FALSE)
+  ) 
+```
+
+\## Show finish result
+
+```{r}
+mnResultmap
+```
+
+\## Save the result
+
+```{r}
+saveWidget(mnResultmap, file="index.html")
+```
+
+## That's it!
+
+I hope you enjoyed learning how to make an interactive map in R and that you can see it's not so scary! I've published the code for this map at my github page here so feel free to have a root through that if you get stuck - or drop me a message on facebook \@adiletbekturov and I'll see if I can help! Also please do share any of your creations with me - writing these tutorials can be a lot of work, and it makes me so happy if I hear they help even one person!
+
+Thanks for reading!
+
+# 
+
+
+
+
